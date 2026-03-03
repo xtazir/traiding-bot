@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string
-import ccxt
+import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -16,17 +16,14 @@ import threading
 warnings.filterwarnings('ignore')
 
 # ---------------- KONFIGURACJA ----------------
-SYMBOL = 'PAXG/USDT'  
+SYMBOL = 'XAUUSD=X'  # Prawdziwe Złoto Spot (idealnie zgrane z XTB)
 TIMEFRAME = '1m'      
 REFRESH_RATE = 5      
 
-# --- ZMIENNE ŚRODOWISKOWE Z RAILWAY ---
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 app = Flask(__name__)
-# Zmiana na KuCoin, aby uniknąć blokad geograficznych Binance w chmurze
-exchange = ccxt.kucoin({'enableRateLimit': True})
 
 last_telegram_signal = "CZEKAJ"
 app_state = {
@@ -41,7 +38,7 @@ HTML_TEMPLATE = """
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>ORZEŁ v24 - WYKRESY TELEGRAM</title>
+    <title>ORZEŁ v25 - PRAWDZIWE ZŁOTO XAU/USD</title>
     <meta http-equiv="refresh" content="{{ refresh_rate }}">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
@@ -50,7 +47,7 @@ HTML_TEMPLATE = """
         body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Roboto', sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         .top-bar { height: 50px; background-color: #1a1e26; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; font-size: 0.9rem; }
         .logo { font-weight: 900; color: var(--text-main); font-size: 1.2rem; letter-spacing: 1px; }
-        .logo span { color: #0088cc; } 
+        .logo span { color: #eab308; } 
         .status-ping { display: flex; align-items: center; gap: 8px; color: var(--buy-color); font-weight: bold; }
         .dot { height: 8px; width: 8px; background-color: var(--buy-color); border-radius: 50%; box-shadow: 0 0 8px var(--buy-color); animation: pulse 1s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
@@ -68,7 +65,7 @@ HTML_TEMPLATE = """
         .feature-box { background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--ai-color); padding: 10px; font-size: 0.85rem; border-radius: 0 4px 4px 0; margin-top: 20px; line-height: 1.4; }
         .chart-area { background-color: var(--bg-dark); position: relative; width: 100%; height: 100%; }
         .market-price { text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
-        .market-symbol { font-size: 1.5rem; font-weight: 900; margin-bottom: 5px; }
+        .market-symbol { font-size: 1.5rem; font-weight: 900; margin-bottom: 5px; color: #eab308; }
         .market-value { font-size: 2.5rem; font-weight: 700; color: #fff; }
         .order-action { text-align: center; margin-bottom: 20px; }
         .status-badge { display: inline-block; padding: 6px 12px; border-radius: 4px; font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
@@ -87,8 +84,8 @@ HTML_TEMPLATE = """
 <body>
     <div id="content" style="height: 100%; width: 100%; display: flex; flex-direction: column;">
         <div class="top-bar">
-            <div class="logo">ORZEŁ <span>v24 PHOTO</span></div>
-            <div class="status-ping"><div class="dot"></div> Odświeżanie UI: {{ refresh_rate }}s | ML Execution: {{ exec_time }}ms</div>
+            <div class="logo">ORZEŁ <span>v25 XAU/USD</span></div>
+            <div class="status-ping"><div class="dot"></div> Yahoo Finance Feed | ML Execution: {{ exec_time }}ms</div>
         </div>
         <div class="workspace">
             <div class="panel">
@@ -121,7 +118,7 @@ HTML_TEMPLATE = """
                 <div class="panel-header">Terminal Zleceń</div>
                 <div class="panel-content">
                     <div class="market-price">
-                        <div class="market-symbol">XAU/USD (PROXY)</div>
+                        <div class="market-symbol">XAU/USD (ZŁOTO)</div>
                         <div class="market-value">{{ current_price }}</div>
                     </div>
                     <div class="order-action">
@@ -140,14 +137,10 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# NOWA FUNKCJA: WYSYŁANIE ZDJĘCIA NA TELEGRAM
 def send_telegram_photo(caption, photo_path="chart.png"):
     token = os.getenv('TELEGRAM_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
-    if not token or not chat_id:
-        print("BŁĄD: Brak kluczy Telegram!")
-        return
-        
+    if not token or not chat_id: return
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
     try:
         with open(photo_path, "rb") as photo:
@@ -157,7 +150,6 @@ def send_telegram_photo(caption, photo_path="chart.png"):
     except Exception as e:
         print(f"Błąd wysyłania zdjęcia: {e}")
 
-# Zwykłe wiadomości powitalne itp.
 def send_telegram_message(text):
     token = os.getenv('TELEGRAM_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
@@ -186,11 +178,21 @@ def compute_indicators(df):
 def fetch_and_train_ai():
     start_time = time.time()
     try:
-        bars = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=1000)
-        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+        # NOWY SILNIK: Prawdziwe rynkowe złoto z Yahoo Finance
+        ticker = yf.Ticker(SYMBOL)
+        df_raw = ticker.history(period="5d", interval="1m")
+        if df_raw.empty:
+            return pd.DataFrame(), 50, 50, "Brak Danych (Poza sesją?)", 0, "BRAK"
+            
+        df_raw.reset_index(inplace=True)
+        # Zamiana nazw kolumn pod nasz silnik
+        df_raw.rename(columns={'Datetime': 'datetime', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
         
-        df = compute_indicators(df)
+        # Oczyszczenie indeksów w przypadku dziwnych formatów z Yahoo
+        if isinstance(df_raw.columns, pd.MultiIndex):
+            df_raw.columns = df_raw.columns.get_level_values(0)
+
+        df = compute_indicators(df_raw)
         df.dropna(inplace=True)
 
         df['Target'] = (df['close'].shift(-3) > df['close']).astype(int)
@@ -218,10 +220,9 @@ def fetch_and_train_ai():
         
         return df, prob_up, prob_down, top_feature_name, exec_time, macro_trend
     except Exception as e:
-        print(f"Błąd analizy: {e}")
+        print(f"Błąd analizy danych Yahoo: {e}")
         return pd.DataFrame(), 50, 50, "Błąd", 0, "BRAK"
 
-# GENEROWANIE OBIEKTU WYKRESU (Używane do WWW i PNG)
 def build_figure(df):
     df_plot = df.tail(100)
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02, row_heights=[0.8, 0.2])
@@ -234,13 +235,13 @@ def build_figure(df):
     fig.update_layout(template='plotly_dark', paper_bgcolor='#121418', plot_bgcolor='#121418', margin=dict(l=10, r=10, t=10, b=10), autosize=True, xaxis_rangeslider_visible=False, showlegend=False)
     return fig
 
-# --- SILNIK W TLE DLA RAILWAY (24/7) ---
 def background_scanner():
     global last_telegram_signal, app_state
-    print("☁️ Rozpoczynam skanowanie w tle...")
-    send_telegram_message("☁️ <b>Złoty Orzeł uruchomiony na Railway!</b>\nOczekuję na wygenerowanie wykresów i sygnałów...")
+    print("☁️ Rozpoczynam skanowanie PRAWDZIWEGO ZŁOTA w tle...")
+    send_telegram_message("☁️ <b>Złoty Orzeł v25 (XAU/USD) na Railway!</b>\nDane zsynchronizowane z XTB.")
 
     while True:
+        # Odświeżanie z Yahoo z lekkim opóźnieniem by nie dostać bana na IP
         df, prob_up, prob_down, top_feature, exec_time, macro_trend = fetch_and_train_ai()
         if not df.empty:
             current_price = df['close'].iloc[-1]
@@ -260,25 +261,21 @@ def background_scanner():
             if main_action == "KUP": sl_str, tp_str = f"-{sl_dist:.2f}", f"+{tp_dist:.2f}"
             elif main_action == "SPRZEDAJ": sl_str, tp_str = f"+{sl_dist:.2f}", f"-{tp_dist:.2f}"
 
-            # Logika Telegram - WYSYŁANIE ZDJĘCIA I TEKSTU
             if main_action in ["KUP", "SPRZEDAJ"] and main_action != last_telegram_signal:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Generowanie wykresu do wysyłki...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Wysyłanie wykresu na Telegram...")
                 fig = build_figure(df)
-                # Zapisujemy wykres jako fizyczny plik PNG na serwerze
                 fig.write_image("chart.png", width=1000, height=600, scale=1)
                 
                 kolor = "🟢" if main_action == "KUP" else "🔴"
                 akcja_xtb = "Odejmij SL, Dodaj TP" if main_action == "KUP" else "Dodaj SL, Odejmij TP"
-                wiadomosc = f"{kolor} <b>SYGNAŁ ZŁOTO: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ ATR: {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
+                wiadomosc = f"{kolor} <b>SYGNAŁ XAU/USD: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ ATR: {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
                 
-                # Wysyłamy paczkę!
                 send_telegram_photo(wiadomosc, "chart.png")
                 last_telegram_signal = main_action
             
             elif main_action == "CZEKAJ":
                 last_telegram_signal = "CZEKAJ"
 
-            # Aktualizacja WWW
             fig = build_figure(df)
             app_state.update({
                 "current_price": f"{current_price:.2f}", "prob_up": prob_up, "prob_down": prob_down,
@@ -287,7 +284,8 @@ def background_scanner():
                 "chart_html": pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
             })
             
-        time.sleep(REFRESH_RATE)
+        # Zmieniliśmy czas odpytywania Yahoo na 15 sekund dla bezpieczeństwa serwera
+        time.sleep(15)
 
 @app.route('/')
 def index():
