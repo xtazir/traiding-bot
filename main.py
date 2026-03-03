@@ -16,7 +16,7 @@ import threading
 warnings.filterwarnings('ignore')
 
 # ---------------- KONFIGURACJA ----------------
-SYMBOL = 'XAUUSD=X'  # Prawdziwe Złoto Spot (idealnie zgrane z XTB)
+SYMBOL = 'GC=F'  # Prawdziwe Kontrakty Terminowe na Złoto (COMEX)
 TIMEFRAME = '1m'      
 REFRESH_RATE = 5      
 
@@ -295,3 +295,4 @@ if __name__ == '__main__':
     threading.Thread(target=background_scanner, daemon=True).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
+
