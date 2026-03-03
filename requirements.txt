@@ -1,5 +1,5 @@
 Flask
-yfinance
+ccxt
 pandas
 numpy
 scikit-learn
