@@ -21,8 +21,8 @@ TIMEFRAME = '1m'
 REFRESH_RATE = 5      
 
 # --- ZMIENNE ŚRODOWISKOWE Z RAILWAY ---
-TELEGRAM_TOKEN = os.getenv('8561391555:AAF9hik7Wz0L6GwDyzNoGGnRT-SW-dUfhoc')
-TELEGRAM_CHAT_ID = os.getenv('-1003750371593')
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 app = Flask(__name__)
 exchange = ccxt.binance({'enableRateLimit': True})
@@ -350,3 +350,4 @@ if __name__ == '__main__':
     # Obsługa dynamicznego portu wymaganego przez serwery Railway
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
+
