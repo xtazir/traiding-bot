@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string
-import yfinance as yf
+import ccxt
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -16,7 +16,7 @@ import threading
 warnings.filterwarnings('ignore')
 
 # ---------------- KONFIGURACJA ----------------
-SYMBOL = 'GC=F'  # Prawdziwe Kontrakty Terminowe na Złoto (COMEX)
+SYMBOL = 'PAXG/USDT'  # Wracamy do naszego cyfrowego Złota!
 TIMEFRAME = '1m'      
 REFRESH_RATE = 5      
 
@@ -24,6 +24,9 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 app = Flask(__name__)
+
+# SILNIK BINANCE - działa dzięki holenderskiemu IP!
+exchange = ccxt.binance({'enableRateLimit': True})
 
 last_telegram_signal = "CZEKAJ"
 app_state = {
@@ -38,16 +41,16 @@ HTML_TEMPLATE = """
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>ORZEŁ v25 - PRAWDZIWE ZŁOTO XAU/USD</title>
+    <title>ORZEŁ v26 - ULTIMATE (BINANCE + CLOUD)</title>
     <meta http-equiv="refresh" content="{{ refresh_rate }}">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
-        :root { --bg-dark: #121418; --bg-panel: #1e222d; --border: #2b3139; --text-main: #d1d4dc; --text-muted: #787b86; --buy-color: #089981; --sell-color: #f23645; --warning: #eab308; --ai-color: #8b5cf6; --macro: #3b82f6;}
+        :root { --bg-dark: #121418; --bg-panel: #1e222d; --border: #2b3139; --text-main: #d1d4dc; --text-muted: #787b86; --buy-color: #089981; --sell-color: #f23645; --warning: #facc15; --ai-color: #8b5cf6; --macro: #3b82f6;}
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Roboto', sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         .top-bar { height: 50px; background-color: #1a1e26; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; font-size: 0.9rem; }
         .logo { font-weight: 900; color: var(--text-main); font-size: 1.2rem; letter-spacing: 1px; }
-        .logo span { color: #eab308; } 
+        .logo span { color: #facc15; } 
         .status-ping { display: flex; align-items: center; gap: 8px; color: var(--buy-color); font-weight: bold; }
         .dot { height: 8px; width: 8px; background-color: var(--buy-color); border-radius: 50%; box-shadow: 0 0 8px var(--buy-color); animation: pulse 1s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
@@ -65,7 +68,7 @@ HTML_TEMPLATE = """
         .feature-box { background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--ai-color); padding: 10px; font-size: 0.85rem; border-radius: 0 4px 4px 0; margin-top: 20px; line-height: 1.4; }
         .chart-area { background-color: var(--bg-dark); position: relative; width: 100%; height: 100%; }
         .market-price { text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
-        .market-symbol { font-size: 1.5rem; font-weight: 900; margin-bottom: 5px; color: #eab308; }
+        .market-symbol { font-size: 1.5rem; font-weight: 900; margin-bottom: 5px; color: #facc15; }
         .market-value { font-size: 2.5rem; font-weight: 700; color: #fff; }
         .order-action { text-align: center; margin-bottom: 20px; }
         .status-badge { display: inline-block; padding: 6px 12px; border-radius: 4px; font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
@@ -84,8 +87,8 @@ HTML_TEMPLATE = """
 <body>
     <div id="content" style="height: 100%; width: 100%; display: flex; flex-direction: column;">
         <div class="top-bar">
-            <div class="logo">ORZEŁ <span>v25 XAU/USD</span></div>
-            <div class="status-ping"><div class="dot"></div> Yahoo Finance Feed | ML Execution: {{ exec_time }}ms</div>
+            <div class="logo">ORZEŁ <span>v26 ULTIMATE</span></div>
+            <div class="status-ping"><div class="dot"></div> Binance Feed | ML Execution: {{ exec_time }}ms</div>
         </div>
         <div class="workspace">
             <div class="panel">
@@ -118,7 +121,7 @@ HTML_TEMPLATE = """
                 <div class="panel-header">Terminal Zleceń</div>
                 <div class="panel-content">
                     <div class="market-price">
-                        <div class="market-symbol">XAU/USD (ZŁOTO)</div>
+                        <div class="market-symbol">PAXG/USDT (ZŁOTO)</div>
                         <div class="market-value">{{ current_price }}</div>
                     </div>
                     <div class="order-action">
@@ -128,6 +131,9 @@ HTML_TEMPLATE = """
                         <div class="risk-row"><span class="risk-label">ZASIĘG SL</span><span class="risk-val val-sl">{{ sl_str }} USD</span></div>
                         <div class="risk-row"><span class="risk-label">ZASIĘG TP</span><span class="risk-val val-tp">{{ tp_str }} USD</span></div>
                         <div class="risk-row"><span class="risk-label">ZMIENNOŚĆ (ATR)</span><span class="risk-val" style="color: var(--warning);">{{ atr_val }} USD</span></div>
+                    </div>
+                    <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
+                        👉 Dane: Binance | Server: EU
                     </div>
                 </div>
             </div>
@@ -178,21 +184,12 @@ def compute_indicators(df):
 def fetch_and_train_ai():
     start_time = time.time()
     try:
-        # NOWY SILNIK: Prawdziwe rynkowe złoto z Yahoo Finance
-        ticker = yf.Ticker(SYMBOL)
-        df_raw = ticker.history(period="5d", interval="1m")
-        if df_raw.empty:
-            return pd.DataFrame(), 50, 50, "Brak Danych (Poza sesją?)", 0, "BRAK"
-            
-        df_raw.reset_index(inplace=True)
-        # Zamiana nazw kolumn pod nasz silnik
-        df_raw.rename(columns={'Datetime': 'datetime', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
-        
-        # Oczyszczenie indeksów w przypadku dziwnych formatów z Yahoo
-        if isinstance(df_raw.columns, pd.MultiIndex):
-            df_raw.columns = df_raw.columns.get_level_values(0)
+        # Pobieranie danych z Binance!
+        bars = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=1000)
+        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-        df = compute_indicators(df_raw)
+        df = compute_indicators(df)
         df.dropna(inplace=True)
 
         df['Target'] = (df['close'].shift(-3) > df['close']).astype(int)
@@ -220,14 +217,14 @@ def fetch_and_train_ai():
         
         return df, prob_up, prob_down, top_feature_name, exec_time, macro_trend
     except Exception as e:
-        print(f"Błąd analizy danych Yahoo: {e}")
+        print(f"Błąd analizy danych Binance: {e}")
         return pd.DataFrame(), 50, 50, "Błąd", 0, "BRAK"
 
 def build_figure(df):
     df_plot = df.tail(100)
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02, row_heights=[0.8, 0.2])
     fig.add_trace(go.Candlestick(x=df_plot['datetime'], open=df_plot['open'], high=df_plot['high'], low=df_plot['low'], close=df_plot['close'], increasing_line_color='#089981', decreasing_line_color='#f23645'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_20'], line=dict(color='#eab308', width=1.5), name="EMA 20"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_20'], line=dict(color='#facc15', width=1.5), name="EMA 20"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_300'], line=dict(color='#3b82f6', width=2.5), name="Trend 15m"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['RSI'], line=dict(color='#8b5cf6', width=1.5), name="RSI"), row=2, col=1)
     fig.add_hline(y=70, line_dash="dot", row=2, col=1, line_color="#f23645")
@@ -237,11 +234,10 @@ def build_figure(df):
 
 def background_scanner():
     global last_telegram_signal, app_state
-    print("☁️ Rozpoczynam skanowanie PRAWDZIWEGO ZŁOTA w tle...")
-    send_telegram_message("☁️ <b>Złoty Orzeł v25 (XAU/USD) na Railway!</b>\nDane zsynchronizowane z XTB.")
+    print("☁️ Rozpoczynam skanowanie Binance PAXG w tle...")
+    send_telegram_message("☁️ <b>Złoty Orzeł v26 uruchomiony!</b>\nŹródło: Binance (Serwer EU) 🇪🇺\nWykresy zsynchronizowane. Oczekuję na wejście...")
 
     while True:
-        # Odświeżanie z Yahoo z lekkim opóźnieniem by nie dostać bana na IP
         df, prob_up, prob_down, top_feature, exec_time, macro_trend = fetch_and_train_ai()
         if not df.empty:
             current_price = df['close'].iloc[-1]
@@ -268,7 +264,7 @@ def background_scanner():
                 
                 kolor = "🟢" if main_action == "KUP" else "🔴"
                 akcja_xtb = "Odejmij SL, Dodaj TP" if main_action == "KUP" else "Dodaj SL, Odejmij TP"
-                wiadomosc = f"{kolor} <b>SYGNAŁ XAU/USD: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ ATR: {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
+                wiadomosc = f"{kolor} <b>SYGNAŁ ZŁOTO: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ ATR: {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
                 
                 send_telegram_photo(wiadomosc, "chart.png")
                 last_telegram_signal = main_action
@@ -284,8 +280,7 @@ def background_scanner():
                 "chart_html": pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
             })
             
-        # Zmieniliśmy czas odpytywania Yahoo na 15 sekund dla bezpieczeństwa serwera
-        time.sleep(15)
+        time.sleep(REFRESH_RATE)
 
 @app.route('/')
 def index():
@@ -295,4 +290,3 @@ if __name__ == '__main__':
     threading.Thread(target=background_scanner, daemon=True).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
-
