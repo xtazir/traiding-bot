@@ -5,3 +5,4 @@ numpy
 scikit-learn
 plotly
 requests
+kaleido==0.2.1
