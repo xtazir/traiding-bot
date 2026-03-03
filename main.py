@@ -264,8 +264,14 @@ def background_scanner():
                 
                 kolor = "🟢" if main_action == "KUP" else "🔴"
                 akcja_xtb = "Odejmij SL, Dodaj TP" if main_action == "KUP" else "Dodaj SL, Odejmij TP"
-                wiadomosc = f"{kolor} <b>SYGNAŁ ZŁOTO: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ ATR: {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
+                ikonka_trendu = "📈" if macro_trend == "WZROSTOWY" else "📉"
                 
+                wiadomosc = f"{kolor} <b>SYGNAŁ ZŁOTO: {main_action}</b>\n\n" \
+                            f"{ikonka_trendu} <b>Trend 15m:</b> {macro_trend}\n" \
+                            f"🛡️ <b>Zasięg SL:</b> {sl_str} USD\n" \
+                            f"💰 <b>Zasięg TP:</b> {tp_str} USD\n" \
+                            f"〰️ Zmienność (ATR): {atr_val:.2f} USD\n\n" \
+                            f"👉 XTB: {akcja_xtb}"
                 send_telegram_photo(wiadomosc, "chart.png")
                 last_telegram_signal = main_action
             
@@ -290,3 +296,4 @@ if __name__ == '__main__':
     threading.Thread(target=background_scanner, daemon=True).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
+
