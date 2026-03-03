@@ -25,9 +25,9 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 app = Flask(__name__)
-exchange = ccxt.binance({'enableRateLimit': True})
+# Zmiana na KuCoin, aby uniknąć blokad geograficznych Binance w chmurze
+exchange = ccxt.kucoin({'enableRateLimit': True})
 
-# Pamięć globalna bota (aby strona WWW i Telegram korzystały z tych samych danych)
 last_telegram_signal = "CZEKAJ"
 app_state = {
     "current_price": "0.00", "prob_up": 50, "prob_down": 50, 
@@ -36,55 +36,45 @@ app_state = {
     "macro_trend": "BRAK", "chart_html": ""
 }
 
-# Skrypt HTML zostaje dokładnie ten sam
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>ORZEŁ v23 - CLOUD & TELEGRAM</title>
+    <title>ORZEŁ v24 - WYKRESY TELEGRAM</title>
     <meta http-equiv="refresh" content="{{ refresh_rate }}">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
         :root { --bg-dark: #121418; --bg-panel: #1e222d; --border: #2b3139; --text-main: #d1d4dc; --text-muted: #787b86; --buy-color: #089981; --sell-color: #f23645; --warning: #eab308; --ai-color: #8b5cf6; --macro: #3b82f6;}
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Roboto', sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-        
         .top-bar { height: 50px; background-color: #1a1e26; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; font-size: 0.9rem; }
         .logo { font-weight: 900; color: var(--text-main); font-size: 1.2rem; letter-spacing: 1px; }
-        .logo span { color: #0088cc; } /* Kolor Telegrama */
+        .logo span { color: #0088cc; } 
         .status-ping { display: flex; align-items: center; gap: 8px; color: var(--buy-color); font-weight: bold; }
         .dot { height: 8px; width: 8px; background-color: var(--buy-color); border-radius: 50%; box-shadow: 0 0 8px var(--buy-color); animation: pulse 1s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-
         .workspace { display: grid; grid-template-columns: 280px 1fr 320px; height: calc(100vh - 50px); }
         .panel { background-color: var(--bg-panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
         .panel-right { border-right: none; border-left: 1px solid var(--border); }
         .panel-header { padding: 15px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
         .panel-content { padding: 15px; overflow-y: auto; }
-
         .telemetry-item { margin-bottom: 20px; }
         .tel-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; }
         .tel-value { font-size: 1.1rem; font-weight: 700; }
-        
         .ai-bar-container { background: var(--bg-dark); height: 8px; border-radius: 4px; overflow: hidden; display: flex; margin-top: 8px; }
         .ai-up { background: var(--buy-color); height: 100%; transition: width 0.3s; }
         .ai-down { background: var(--sell-color); height: 100%; transition: width 0.3s; }
-        
         .feature-box { background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--ai-color); padding: 10px; font-size: 0.85rem; border-radius: 0 4px 4px 0; margin-top: 20px; line-height: 1.4; }
-
         .chart-area { background-color: var(--bg-dark); position: relative; width: 100%; height: 100%; }
-
         .market-price { text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
         .market-symbol { font-size: 1.5rem; font-weight: 900; margin-bottom: 5px; }
         .market-value { font-size: 2.5rem; font-weight: 700; color: #fff; }
-
         .order-action { text-align: center; margin-bottom: 20px; }
         .status-badge { display: inline-block; padding: 6px 12px; border-radius: 4px; font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
         .badge-KUP { background: rgba(8, 153, 129, 0.2); color: var(--buy-color); border: 1px solid var(--buy-color); }
         .badge-SPRZEDAJ { background: rgba(242, 54, 69, 0.2); color: var(--sell-color); border: 1px solid var(--sell-color); }
         .badge-CZEKAJ { background: rgba(120, 123, 134, 0.2); color: var(--text-muted); border: 1px solid var(--text-muted); }
-
         .risk-params { background: var(--bg-dark); border-radius: 6px; padding: 15px; border: 1px solid var(--border); }
         .risk-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
         .risk-row:last-child { border-bottom: none; padding-bottom: 0; }
@@ -97,10 +87,9 @@ HTML_TEMPLATE = """
 <body>
     <div id="content" style="height: 100%; width: 100%; display: flex; flex-direction: column;">
         <div class="top-bar">
-            <div class="logo">ORZEŁ <span>v23 CLOUD</span></div>
+            <div class="logo">ORZEŁ <span>v24 PHOTO</span></div>
             <div class="status-ping"><div class="dot"></div> Odświeżanie UI: {{ refresh_rate }}s | ML Execution: {{ exec_time }}ms</div>
         </div>
-
         <div class="workspace">
             <div class="panel">
                 <div class="panel-header">Diagnostyka Modelu (ML)</div>
@@ -115,28 +104,19 @@ HTML_TEMPLATE = """
                         <div class="tel-value" style="color: var(--sell-color);">{{ prob_down }}%</div>
                         <div class="ai-bar-container"><div class="ai-down" style="width: {{ prob_down }}%; float: right;"></div></div>
                     </div>
-                    
                     <div class="feature-box">
                         <strong>Główny czynnik:</strong><br>
                         <span style="color: #fff;">{{ top_feature }}</span>
                     </div>
-                    
                     <div class="feature-box" style="border-left-color: var(--macro); background: rgba(59, 130, 246, 0.1);">
                         <strong>Filtr Makro (Trend 15m):</strong><br>
                         <span style="color: {{ 'var(--buy-color)' if macro_trend == 'WZROSTOWY' else 'var(--sell-color)' }};">{{ macro_trend }}</span>
                     </div>
-
-                    <div style="margin-top:20px; padding: 10px; border: 1px solid var(--border); border-radius: 4px; background: rgba(0, 136, 204, 0.05); text-align: center;">
-                        <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Serwer / Telegram</span><br>
-                        <strong style="color: #0088cc; font-size: 1.1rem;">ONLINE 📡</strong>
-                    </div>
                 </div>
             </div>
-
             <div class="chart-area">
                 {{ chart_html | safe }}
             </div>
-
             <div class="panel panel-right">
                 <div class="panel-header">Terminal Zleceń</div>
                 <div class="panel-content">
@@ -144,83 +124,59 @@ HTML_TEMPLATE = """
                         <div class="market-symbol">XAU/USD (PROXY)</div>
                         <div class="market-value">{{ current_price }}</div>
                     </div>
-
                     <div class="order-action">
                         <div class="status-badge badge-{{ main_action }}">{{ main_action }}</div>
                     </div>
-
                     <div class="risk-params">
-                        <div class="risk-row">
-                            <span class="risk-label">ZASIĘG STOP LOSS</span>
-                            <span class="risk-val val-sl">{{ sl_str }} USD</span>
-                        </div>
-                        <div class="risk-row">
-                            <span class="risk-label">ZASIĘG TAKE PROFIT</span>
-                            <span class="risk-val val-tp">{{ tp_str }} USD</span>
-                        </div>
-                        <div class="risk-row">
-                            <span class="risk-label">ZMIENNOŚĆ (ATR)</span>
-                            <span class="risk-val" style="color: var(--warning);">{{ atr_val }} USD</span>
-                        </div>
-                    </div>
-                    <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
-                        {% if main_action == 'KUP' %}
-                            👉 XTB: Odejmij SL od ceny, dodaj TP.
-                        {% elif main_action == 'SPRZEDAJ' %}
-                            👉 XTB: Dodaj SL do ceny, odejmij TP.
-                        {% else %}
-                            Czekaj na sygnał.
-                        {% endif %}
+                        <div class="risk-row"><span class="risk-label">ZASIĘG SL</span><span class="risk-val val-sl">{{ sl_str }} USD</span></div>
+                        <div class="risk-row"><span class="risk-label">ZASIĘG TP</span><span class="risk-val val-tp">{{ tp_str }} USD</span></div>
+                        <div class="risk-row"><span class="risk-label">ZMIENNOŚĆ (ATR)</span><span class="risk-val" style="color: var(--warning);">{{ atr_val }} USD</span></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <script>
-        // Dźwięk powiadomienia na stronie WWW odpalony z pamięci Cloud
-        window.onload = function() {
-            let currentSignal = "{{ main_action }}";
-            let prevSignal = localStorage.getItem('lastSignalV23');
-            if (prevSignal && prevSignal !== currentSignal && (currentSignal === 'KUP' || currentSignal === 'SPRZEDAJ')) {
-                let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                let osc = audioCtx.createOscillator();
-                let gain = audioCtx.createGain();
-                osc.type = 'triangle'; osc.frequency.value = 880;
-                gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.3);
-                osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-            }
-            localStorage.setItem('lastSignalV23', currentSignal);
-        }
-    </script>
 </body>
 </html>
 """
 
-def send_telegram_message(text):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("BŁĄD: Brak kluczy Telegram w zmiennych środowiskowych Railway!")
+# NOWA FUNKCJA: WYSYŁANIE ZDJĘCIA NA TELEGRAM
+def send_telegram_photo(caption, photo_path="chart.png"):
+    token = os.getenv('TELEGRAM_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    if not token or not chat_id:
+        print("BŁĄD: Brak kluczy Telegram!")
         return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
+        
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
     try:
-        requests.post(url, json=payload, timeout=5)
+        with open(photo_path, "rb") as photo:
+            payload = {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"}
+            files = {"photo": photo}
+            requests.post(url, data=payload, files=files, timeout=10)
     except Exception as e:
-        print(f"Błąd wysyłania Telegrama: {e}")
+        print(f"Błąd wysyłania zdjęcia: {e}")
+
+# Zwykłe wiadomości powitalne itp.
+def send_telegram_message(text):
+    token = os.getenv('TELEGRAM_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    if not token or not chat_id: return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+    try: requests.post(url, json=payload, timeout=5)
+    except: pass
 
 def compute_indicators(df):
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
     df['EMA_300'] = df['close'].ewm(span=300, adjust=False).mean()
     df['Dist_EMA300'] = (df['close'] - df['EMA_300']) / df['close'] * 100
     df['Dist_EMA20'] = (df['close'] - df['EMA_20']) / df['close'] * 100
-    
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
     loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
-    
     df['tr1'] = df['high'] - df['low']
     df['tr2'] = np.abs(df['high'] - df['close'].shift(1))
     df['tr3'] = np.abs(df['low'] - df['close'].shift(1))
@@ -242,12 +198,7 @@ def fetch_and_train_ai():
         current_candle = df.iloc[-1:].copy()
 
         features = ['Dist_EMA20', 'RSI', 'ATR', 'Dist_EMA300']
-        feature_names = {
-            'Dist_EMA20': 'Odchylenie (EMA20)',
-            'RSI': 'Siła relatywna (RSI)',
-            'ATR': 'Zmienność (ATR)',
-            'Dist_EMA300': 'Trend (EMA 300)'
-        }
+        feature_names = {'Dist_EMA20': 'Odchylenie (EMA20)', 'RSI': 'Siła relatywna (RSI)', 'ATR': 'Zmienność (ATR)', 'Dist_EMA300': 'Trend (EMA 300)'}
         
         X_train = train_df[features]
         y_train = train_df['Target']
@@ -270,26 +221,24 @@ def fetch_and_train_ai():
         print(f"Błąd analizy: {e}")
         return pd.DataFrame(), 50, 50, "Błąd", 0, "BRAK"
 
-def create_pro_chart(df):
-    if df.empty: return ""
+# GENEROWANIE OBIEKTU WYKRESU (Używane do WWW i PNG)
+def build_figure(df):
     df_plot = df.tail(100)
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02, row_heights=[0.8, 0.2])
     fig.add_trace(go.Candlestick(x=df_plot['datetime'], open=df_plot['open'], high=df_plot['high'], low=df_plot['low'], close=df_plot['close'], increasing_line_color='#089981', decreasing_line_color='#f23645'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_20'], line=dict(color='#eab308', width=1.5)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_300'], line=dict(color='#3b82f6', width=2.5)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['RSI'], line=dict(color='#8b5cf6', width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_20'], line=dict(color='#eab308', width=1.5), name="EMA 20"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['EMA_300'], line=dict(color='#3b82f6', width=2.5), name="Trend 15m"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df_plot['datetime'], y=df_plot['RSI'], line=dict(color='#8b5cf6', width=1.5), name="RSI"), row=2, col=1)
     fig.add_hline(y=70, line_dash="dot", row=2, col=1, line_color="#f23645")
     fig.add_hline(y=30, line_dash="dot", row=2, col=1, line_color="#089981")
     fig.update_layout(template='plotly_dark', paper_bgcolor='#121418', plot_bgcolor='#121418', margin=dict(l=10, r=10, t=10, b=10), autosize=True, xaxis_rangeslider_visible=False, showlegend=False)
-    return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
+    return fig
 
 # --- SILNIK W TLE DLA RAILWAY (24/7) ---
 def background_scanner():
     global last_telegram_signal, app_state
-    print("☁️ Rozpoczynam skanowanie w tle (Cloud Worker)...")
-    
-    # Powitanie przy starcie serwera
-    send_telegram_message("☁️ <b>Złoty Orzeł uruchomiony na Railway!</b>\nNasłuchuję rynku 24/7...")
+    print("☁️ Rozpoczynam skanowanie w tle...")
+    send_telegram_message("☁️ <b>Złoty Orzeł uruchomiony na Railway!</b>\nOczekuję na wygenerowanie wykresów i sygnałów...")
 
     while True:
         df, prob_up, prob_down, top_feature, exec_time, macro_trend = fetch_and_train_ai()
@@ -297,57 +246,54 @@ def background_scanner():
             current_price = df['close'].iloc[-1]
             atr_val = df['ATR'].iloc[-1]
             main_action = "CZEKAJ"
-            sl_dist = 0.0
-            tp_dist = 0.0
+            sl_dist, tp_dist = 0.0, 0.0
             CONFIDENCE_THRESHOLD = 65.0 
 
             if prob_up >= CONFIDENCE_THRESHOLD and macro_trend == "WZROSTOWY":
                 main_action = "KUP"
-                sl_dist = atr_val * 1.5
-                tp_dist = atr_val * 2.5
+                sl_dist, tp_dist = atr_val * 1.5, atr_val * 2.5
             elif prob_down >= CONFIDENCE_THRESHOLD and macro_trend == "SPADKOWY":
                 main_action = "SPRZEDAJ"
-                sl_dist = atr_val * 1.5
-                tp_dist = atr_val * 2.5
+                sl_dist, tp_dist = atr_val * 1.5, atr_val * 2.5
 
             sl_str, tp_str = "Brak", "Brak"
-            if main_action == "KUP":
-                sl_str, tp_str = f"-{sl_dist:.2f}", f"+{tp_dist:.2f}"
-            elif main_action == "SPRZEDAJ":
-                sl_str, tp_str = f"+{sl_dist:.2f}", f"-{tp_dist:.2f}"
+            if main_action == "KUP": sl_str, tp_str = f"-{sl_dist:.2f}", f"+{tp_dist:.2f}"
+            elif main_action == "SPRZEDAJ": sl_str, tp_str = f"+{sl_dist:.2f}", f"-{tp_dist:.2f}"
 
-            # Logika Telegram (Wysyła powiadomienie tylko na zmianę sygnału)
+            # Logika Telegram - WYSYŁANIE ZDJĘCIA I TEKSTU
             if main_action in ["KUP", "SPRZEDAJ"] and main_action != last_telegram_signal:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Generowanie wykresu do wysyłki...")
+                fig = build_figure(df)
+                # Zapisujemy wykres jako fizyczny plik PNG na serwerze
+                fig.write_image("chart.png", width=1000, height=600, scale=1)
+                
                 kolor = "🟢" if main_action == "KUP" else "🔴"
                 akcja_xtb = "Odejmij SL, Dodaj TP" if main_action == "KUP" else "Dodaj SL, Odejmij TP"
-                wiadomosc = f"{kolor} <b>SYGNAŁ ZŁOTO: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ Zmienność (ATR): {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
-                send_telegram_message(wiadomosc)
+                wiadomosc = f"{kolor} <b>SYGNAŁ ZŁOTO: {main_action}</b>\n\n🛡️ <b>Zasięg SL:</b> {sl_str} USD\n💰 <b>Zasięg TP:</b> {tp_str} USD\n〰️ ATR: {atr_val:.2f} USD\n\n👉 XTB: {akcja_xtb}"
+                
+                # Wysyłamy paczkę!
+                send_telegram_photo(wiadomosc, "chart.png")
                 last_telegram_signal = main_action
+            
             elif main_action == "CZEKAJ":
                 last_telegram_signal = "CZEKAJ"
 
-            # Aktualizacja pamięci dla strony WWW
+            # Aktualizacja WWW
+            fig = build_figure(df)
             app_state.update({
                 "current_price": f"{current_price:.2f}", "prob_up": prob_up, "prob_down": prob_down,
-                "main_action": main_action, "sl_str": sl_str, "tp_str": tp_str,
-                "atr_val": f"{atr_val:.2f}", "top_feature": top_feature,
-                "exec_time": exec_time, "macro_trend": macro_trend,
-                "chart_html": create_pro_chart(df)
+                "main_action": main_action, "sl_str": sl_str, "tp_str": tp_str, "atr_val": f"{atr_val:.2f}", 
+                "top_feature": top_feature, "exec_time": exec_time, "macro_trend": macro_trend,
+                "chart_html": pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
             })
             
         time.sleep(REFRESH_RATE)
 
-# --- PANEL WWW ---
 @app.route('/')
 def index():
-    # Strona po prostu pobiera to, co aktualnie wyliczył "Silnik w Tle"
     return render_template_string(HTML_TEMPLATE, refresh_rate=REFRESH_RATE, **app_state)
 
 if __name__ == '__main__':
-    # Uruchomienie skanera w tle na niezależnym wątku
     threading.Thread(target=background_scanner, daemon=True).start()
-    
-    # Obsługa dynamicznego portu wymaganego przez serwery Railway
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
-
